@@ -8,7 +8,8 @@ model = YOLO("yolov8n.pt")
 import cv2
 
 cap=cv2.VideoCapture(0)
-
+cv2.namedWindow("camera", cv2.WINDOW_NORMAL)
+cv2.resizeWindow("camera", 1200, 800)  # width, height
 while True:
     ret , frame =cap.read()
     results=model(frame) #Hey YOLO, look at this image and tell me what objects you see.
