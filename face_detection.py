@@ -63,21 +63,26 @@ while True:
             cv2.circle(frame, (left_eye_x, left_eye_y), 5, (255, 0, 0), -1)
             cv2.circle(frame, (right_eye_x, right_eye_y), 5, (255, 0, 0), -1)
 
-            # ✅ HEAD DIRECTION LOGIC
+            # Horizontal direction
             if nose_x < left_eye_x:
-                text = "Looking LEFT"
+                horizontal = "LEFT"
             elif nose_x > right_eye_x:
-                text = "Looking RIGHT"
+                horizontal = "RIGHT"
             else:
-                text = "CENTER"
+                horizontal = "CENTER"
 
-            # Vertical (UP/DOWN)
+            # Vertical direction
             eye_avg_y = (left_eye_y + right_eye_y) // 2
 
             if nose_y > eye_avg_y + 15:
-                text = "LOOKING DOWN"
+                vertical = "DOWN"
             elif nose_y < eye_avg_y - 15:
-                text = "LOOKING UP"
+                vertical = "UP"
+            else:
+                vertical = "CENTER"
+
+            # Combine both
+            text = f"{vertical} {horizontal}"
 
              # Show text
             cv2.putText(frame, text, (30, 50),
