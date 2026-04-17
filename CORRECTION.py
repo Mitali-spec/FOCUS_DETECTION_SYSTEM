@@ -5,6 +5,7 @@ import time
 import winsound
 import threading
 
+#This function plays a beep sound without stopping your program.
 def play_sound(freq, duration):
     threading.Thread(target=winsound.Beep, args=(freq, duration), daemon=True).start()
 
@@ -26,9 +27,9 @@ focus_stable_start = None
 soft_alert_played = False
 strong_alert_played = False
 
-BUFFER_TIME = 5
-ALERT_TIME = 20
-RESET_TIME = 5
+BUFFER_TIME = 5 #“Wait 5 seconds before deciding the user is distracted”
+ALERT_TIME = 20 #“If user is distracted for 20 seconds → give alert”
+RESET_TIME = 5  #“User must stay focused for 5 seconds to reset system”
 
 frame_count = 0
 results = []
