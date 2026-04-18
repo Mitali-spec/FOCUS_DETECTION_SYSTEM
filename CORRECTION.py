@@ -21,13 +21,14 @@ cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
 # ---------------- VARIABLES ----------------
+possible_distraction_count = 0
 distraction_start_time = None
 buffer_start_time = None
 focus_stable_start = None
 soft_alert_played = False
 strong_alert_played = False
 
-BUFFER_TIME = 5 #“Wait 5 seconds before deciding the user is distracted”
+BUFFER_TIME = 20 #“Wait 5 seconds before deciding the user is distracted”
 ALERT_TIME = 20 #“If user is distracted for 20 seconds → give alert”
 RESET_TIME = 5  #“User must stay focused for 5 seconds to reset system”
 
@@ -76,12 +77,25 @@ while True:
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
     # 4. STATE LOGIC
-    # Corrected: Focus is looking CENTER, not DOWN
+
     if ("CENTER" in text) and not phone_detected:
         state = "FOCUSED"
+        possible_distraction_count = 0  # reset when focused
+        buffer_start_time = None
+
     else:
-        if buffer_start_time is None: buffer_start_time = current_time
-        state = "DISTRACTED" if (current_time - buffer_start_time > BUFFER_TIME) else "POSSIBLE_DISTRACTION"
+        if buffer_start_time is None:
+            buffer_start_time = current_time
+
+        if (current_time - buffer_start_time > BUFFER_TIME):
+            state = "DISTRACTED"
+        else:
+            state = "POSSIBLE_DISTRACTION"
+            possible_distraction_count += 1
+
+    # 🔥 HARD RULE (ADD THIS RIGHT AFTER STATE LOGIC)
+    if possible_distraction_count >= 5:
+        state = "DISTRACTED"
 
     # 5. SOUND LOGIC
     if state == "FOCUSED":
@@ -113,7 +127,8 @@ while True:
     cv2.putText(frame, state, (30, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
     cv2.imshow("Focus Tracker", frame)
 
-    if cv2.waitKey(1) & 0xFF == 27: break
+    if cv2.waitKey(1) & 0xFF == 27:
+        break
 
 cap.release()
 cv2.destroyAllWindows()
