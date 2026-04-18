@@ -12,7 +12,7 @@ cv2.resizeWindow("Focus Tracker", 1200, 800)
 GRACE_PERIOD = 4.0    # When you look away, nothing happens for 4 seconds
 ALARM_DELAY = 10.0     # If you keep looking away for 10 seconds, the alarm starts
 RESET_CONFIRM = 2.0   # You must look back at the screen for 2 seconds continuously to reset
-STRIKE_LIMIT = 2      # 5 soft warnings = Permanent Distraction state
+STRIKE_LIMIT = 5      # 5 soft warnings = Permanent Distraction state
 
 def play_sound(freq, duration):
     threading.Thread(target=winsound.Beep, args=(freq, duration), daemon=True).start()
@@ -90,7 +90,7 @@ while cap.isOpened():   #RUN THIS LOOP AS LONG AS CAMRA IS OPENED
                 current_state = "FOCUSED"
                 look_away_start = None
                 soft_warning_played = False
-                distraction_strike_count = 0 # NEW: Reset strikes once you prove you are focused
+                # strike_reset removed from here so strikes persist!
         
         else:
             focus_restore_start = None 
