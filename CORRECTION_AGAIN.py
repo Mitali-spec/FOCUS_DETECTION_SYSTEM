@@ -1,5 +1,3 @@
-#NOT AT ALL WORKING
-
 import cv2
 import mediapipe as mp
 from ultralytics import YOLO
@@ -7,96 +5,106 @@ import time
 import winsound
 import threading
 
+# --- CONFIGURATION (Adjust these to your liking) ---
+GRACE_PERIOD = 4.0    # Absolute silence for 4 seconds when looking away
+ALARM_DELAY = 10.0     # Start the annoying alarm after 10 seconds total away
+RESET_CONFIRM = 2.0   # Must look back for 2 seconds to "earn" FOCUSED status again
+
 def play_sound(freq, duration):
     threading.Thread(target=winsound.Beep, args=(freq, duration), daemon=True).start()
 
-# ---------------- SETUP ----------------
-mp_face_mesh = mp.solutions.face_mesh
-face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True)
-model = YOLO("yolov8n.pt")
+# Initialize AI models
+face_mesh = mp.solutions.face_mesh.FaceMesh(refine_landmarks=True)
+yolo_model = YOLO("yolov8n.pt")
 cap = cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-# ---------------- VARIABLES ----------------
-BUFFER_TIME = 5
-RESET_TIME = 5
-THRESHOLD = 25 # Increased threshold to prevent flickering
+# --- TRACKING VARIABLES ---
+current_state = "FOCUSED"
+look_away_start = None
+focus_restore_start = None
+soft_warning_played = False
+last_alarm_time = 0
 
-buffer_start_time = None
-focus_stable_start = None
-last_beep_time = 0
-state = "FOCUSED"
-state_counter = 0 # To stabilize state changes
-
-while True:
+while cap.isOpened():
     ret, frame = cap.read()
     if not ret: break
+
+    curr_time = time.time()
     h, w, _ = frame.shape
-    current_time = time.time()
     
-    # 1. DETECTION
-    results = model(frame, verbose=False)
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    result = face_mesh.process(rgb_frame)
-    
-    direction = "CENTER"
+    # 1. PERCEPTION: Is the user looking at the screen right now?
+    # We run YOLO every 5 frames to keep the app smooth
     phone_detected = False
+    if int(curr_time * 10) % 5 == 0:
+        results = yolo_model(frame, verbose=False)
+        for r in results:
+            for box in r.boxes:
+                if yolo_model.names[int(box.cls[0])] == "cell phone":
+                    phone_detected = True
 
-    # 2. FACE MESH LOGIC (With Threshold)
-    if result.multi_face_landmarks:
-        for lm in result.multi_face_landmarks:
-            nose = lm.landmark[1]
-            left_eye = lm.landmark[33]
-            right_eye = lm.landmark[263]
-            
-            nx, lx, rx = int(nose.x * w), int(left_eye.x * w), int(right_eye.x * w)
-            
-            if nx < lx - THRESHOLD: direction = "RIGHT"
-            elif nx > rx + THRESHOLD: direction = "LEFT"
-            else: direction = "CENTER"
-
-    # 3. PHONE DETECTION
-    for r in results:
-        for box in r.boxes:
-            if model.names[int(box.cls[0])] == "cell phone":
-                phone_detected = True
-
-    # 4. STABILIZED STATE LOGIC
-    new_state = "FOCUSED" if (direction == "CENTER" and not phone_detected) else "DISTRACTED"
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    res = face_mesh.process(rgb_frame)
     
-    # Only change state if it persists for 3 frames to stop flickering
-    if new_state != state:
-        state_counter += 1
-        if state_counter > 3:
-            state = new_state
-            state_counter = 0
-    else:
-        state_counter = 0
+    looking_at_screen = False
+    if res.multi_face_landmarks:
+        face = res.multi_face_landmarks[0]
+        # Nose vs Eyes position logic
+        nose = face.landmark[1]
+        left_eye = face.landmark[33]
+        right_eye = face.landmark[263]
+        if left_eye.x < nose.x < right_eye.x:
+            looking_at_screen = True
 
-    # 5. NON-BLOCKING SOUND LOGIC
-    if state == "DISTRACTED":
-        if buffer_start_time is None: buffer_start_time = current_time
-        
-        # Possible Distraction (0-5 seconds)
-        if (current_time - buffer_start_time) < BUFFER_TIME:
-            if current_time - last_beep_time > 1.0: # Beep every second
-                play_sound(500, 200)
-                last_beep_time = current_time
-        # Strong Distraction (After 5 seconds)
+    # 2. THE STATE MACHINE (The "Brain")
+    is_behaving = looking_at_screen and not phone_detected
+
+    if is_behaving:
+        # If they were distracted, they must look back for RESET_CONFIRM seconds
+        if current_state != "FOCUSED":
+            if focus_restore_start is None:
+                focus_restore_start = curr_time
+            
+            if (curr_time - focus_restore_start) >= RESET_CONFIRM:
+                current_state = "FOCUSED"
+                look_away_start = None
+                soft_warning_played = False
         else:
-            if current_time - last_beep_time > 0.5:
-                play_sound(1500, 300)
-                last_beep_time = current_time
+            focus_restore_start = None # Already focused
+    
     else:
-        buffer_start_time = None
-        last_beep_time = 0
+        # User is distracted. Start the timer.
+        focus_restore_start = None 
+        if look_away_start is None:
+            look_away_start = curr_time
+        
+        time_away = curr_time - look_away_start
 
-    # 6. DISPLAY
-    cv2.putText(frame, f"Look: {direction}", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-    cv2.putText(frame, f"State: {state}", (30, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-    cv2.imshow("Focus Tracker", frame)
+        if time_away > ALARM_DELAY:
+            current_state = "DISTRACTED"
+        elif time_away > GRACE_PERIOD:
+            current_state = "POSSIBLE_DISTRACTION"
+        else:
+            current_state = "GRACE_PERIOD" # Silence here
 
+    # 3. EXECUTION: Sound & UI
+    if current_state == "POSSIBLE_DISTRACTION" and not soft_warning_played:
+        play_sound(500, 150) # Two soft notification pings
+        time.sleep(0.1)
+        play_sound(500, 150)
+        soft_warning_played = True
+
+    elif current_state == "DISTRACTED":
+        # Alarm every 1.5 seconds
+        if (curr_time - last_alarm_time) > 1.5:
+            play_sound(1200, 400)
+            last_alarm_time = curr_time
+
+    # UI Overlay
+    msg = f"STATUS: {current_state}"
+    color = (0, 255, 0) if current_state == "FOCUSED" else (0, 255, 255) if "PERIOD" in current_state else (0, 0, 255)
+    cv2.putText(frame, msg, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+    
+    cv2.imshow("Anti-Distraction AI", frame)
     if cv2.waitKey(1) & 0xFF == 27: break
 
 cap.release()
