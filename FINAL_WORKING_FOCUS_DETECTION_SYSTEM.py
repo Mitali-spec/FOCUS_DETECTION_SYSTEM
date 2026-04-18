@@ -13,6 +13,7 @@ GRACE_PERIOD = 4.0    # When you look away, nothing happens for 4 seconds
 ALARM_DELAY = 10.0     # If you keep looking away for 10 seconds, the alarm starts
 RESET_CONFIRM = 2.0   # You must look back at the screen for 2 seconds continuously to reset
 STRIKE_LIMIT = 5      # 5 soft warnings = Permanent Distraction state
+STRIKE_FORGIVE_TIME = 10.0  # NEW: Stay focused for 10s to clear all strikes
 
 def play_sound(freq, duration):
     threading.Thread(target=winsound.Beep, args=(freq, duration), daemon=True).start()
@@ -91,13 +92,27 @@ while cap.isOpened():   #RUN THIS LOOP AS LONG AS CAMRA IS OPENED
                 look_away_start = None
                 soft_warning_played = False
                 # strike_reset removed from here so strikes persist!
+                focus_session_start = curr_time # Start the "forgiveness" timer
         
         else:
+            ## We are ALREADY focused. Now check for forgiveness.
             focus_restore_start = None 
             look_away_start = None # Reset this so timer starts fresh next look-away
-        
+
+            if focus_session_start is None:
+                focus_session_start = curr_time
+            
+            # THE REWARD LOGIC:
+            if (curr_time - focus_session_start) >= STRIKE_FORGIVE_TIME:
+                if distraction_strike_count > 0:
+                    distraction_strike_count = 0
+                    print("Strikes Reset! Good job focusing.")
+
     else:
+            # # User is distracted
             focus_restore_start = None # Already focused
+            focus_session_start = None # Break the focus session timer!
+            
             if look_away_start is None:
                 look_away_start = curr_time
         
