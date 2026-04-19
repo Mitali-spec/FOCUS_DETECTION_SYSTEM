@@ -36,6 +36,7 @@ focus_restore_start = None
 soft_warning_played = False
 last_alarm_time = 0
 distraction_strike_count = 0  # NEW: Tracks how many times you've been warned
+focus_session_start = None
 
 while cap.isOpened():   #RUN THIS LOOP AS LONG AS CAMRA IS OPENED
     ret, frame = cap.read()
